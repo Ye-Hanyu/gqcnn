@@ -163,7 +163,7 @@ class GQCNNTrainerTF(object):
 
     def _create_optimizer(self, loss, batch, var_list, learning_rate):
         """Create optimizer based on config file.
-
+            优化器
         Parameters
         ----------
         loss : :obj:`tensorflow Tensor`
@@ -181,7 +181,7 @@ class GQCNNTrainerTF(object):
         :obj:`tf.train.Optimizer`
             Optimizer.
         """
-        # Instantiate optimizer.
+        # Instantiate optimizer. 优化器选择
         if self.cfg["optimizer"] == "momentum":
             optimizer = tf.train.MomentumOptimizer(learning_rate,
                                                    self.momentum_rate)
