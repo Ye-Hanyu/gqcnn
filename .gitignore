@@ -15,6 +15,7 @@ dist/
 downloads/
 data/training/
 eggs/
+models/
 .eggs/
 lib/
 lib64/

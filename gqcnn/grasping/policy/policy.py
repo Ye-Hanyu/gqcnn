@@ -673,14 +673,23 @@ class RobustGraspingPolicy(GraspingPolicy):
 class CrossEntropyRobustGraspingPolicy(GraspingPolicy):
     """Optimizes a set of grasp candidates in image space using the
     cross entropy method.
+    使用交叉熵方法优化图像空间中的一组抓取候选对象
+
+
 
     Cross entropy method (CEM):
     (1) sample an initial set of candidates
+        从一组初始候选中取样
     (2) sort the candidates
+        对候选进行分类
     (3) fit a GMM to the top P%
+        将GMM与顶部P%匹配
     (4) re-sample grasps from the distribution
+        重新采集分布的样本
     (5) repeat steps 2-4 for K iters
+        重复步骤2-4 k个迭代
     (6) return the best candidate from the final sample set
+        从最终样本集中选出最佳候选
     """
 
     def __init__(self, config, filters=None):
