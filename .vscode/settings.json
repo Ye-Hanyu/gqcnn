@@ -1,4 +1,5 @@
 {
     "python.pythonPath": "/home/ye/anaconda3/envs/gqcnn/bin/python",
-    "restructuredtext.confPath": "${workspaceFolder}/docs/source"
+    "restructuredtext.confPath": "${workspaceFolder}/docs/source",
+    "restructuredtext.languageServer.disabled": true
 }

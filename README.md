@@ -26,3 +26,6 @@ Please see the [docs](https://berkeleyautomation.github.io/gqcnn/) for installat
 If you use any part of this code in a publication, please cite [the appropriate Dex-Net publication](https://berkeleyautomation.github.io/gqcnn/index.html#academic-use).
 
 # gqcnn-f
+
+
+python examples/policy.py GQCNN-4.0-PJ --depth_image /home/ye/shot/img/depth-1.npy --segmask /home/ye/shot/img/segmask-01.png --camera_intr data/calib/primesense/primesense.intr

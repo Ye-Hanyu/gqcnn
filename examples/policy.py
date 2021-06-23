@@ -37,6 +37,7 @@ import os
 import time
 
 import numpy as np
+import cv2
 
 from autolab_core import YamlConfig, Logger
 from perception import (BinaryImage, CameraIntrinsics, ColorImage, DepthImage,
@@ -48,6 +49,9 @@ from gqcnn.grasping import (RobustGraspingPolicy,
                             FullyConvolutionalGraspingPolicyParallelJaw,
                             FullyConvolutionalGraspingPolicySuction)
 from gqcnn.utils import GripperMode
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import math
 
 # Set up logger.
 logger = Logger.get_logger("examples/policy.py")
@@ -258,11 +262,139 @@ if __name__ == "__main__":
 
     # Vis final grasp.
     if policy_config["vis"]["final_grasp"]:
+        colorimg = plt.imread('/home/ye/img/mask/rgb-22.png-cut.png')
         vis.figure(size=(10, 10))
-        vis.imshow(rgbd_im.depth,
-                   vmin=policy_config["vis"]["vmin"],
-                   vmax=policy_config["vis"]["vmax"])
-        vis.grasp(action.grasp, scale=2.5, show_center=False, show_axis=True)
+        plt.imshow(colorimg)
+        # vis.imshow(rgbd_im.depth,
+        #            vmin=policy_config["vis"]["vmin"],
+        #            vmax=policy_config["vis"]["vmax"])
         vis.title("Planned grasp at depth {0:.3f}m with Q={1:.3f}".format(
             action.grasp.depth, action.q_value))
+        vis.grasp(action.grasp, scale=2.5, show_center=True, show_axis=True)
+        logger.info("Center Point: (%d, %d)" %
+                    (action.grasp.center.data[0], action.grasp.center.data[1]))
+        
+        logger.info("Width: %d" % (action.grasp.width*1000))
+        # 以图像中心为旋转中心
+        center = (action.grasp.center.data[0].astype(int),
+                  action.grasp.center.data[1].astype(int))
+        angle = (action.grasp.angle / (3.14159 * 2) * 360)                 # 顺时针旋转90°
+        scale = 1                  # 等比例旋转，即旋转后尺度不变
+        img = np.load('/home/ye/img/depth/depth-A.npy')
+        logger.info("Center: (%.2f, %.2f, %.2f)" %
+                    (img[center[0], center[1], 0]*1000, img[center[0], center[1], 1]*1000, img[center[0], center[1], 2]*1000))
+        M = cv2.getRotationMatrix2D(center, angle, scale)
+        image_rotation = cv2.warpAffine(src=img, M=M, dsize=(
+            640, 480))
+        # cv2.imshow('1', image_rotation)
+        # cv2.waitKey(1000)
+        # cv2.imwrite('/home/ye/img/test/rotation.png', image_rotation*255)
+        cutwidth = int(action.grasp.width_px / 2)
+        dst = image_rotation[int(center[1] - cutwidth):int(center[1] + cutwidth),
+                             int(center[0] - cutwidth):int(center[0] + cutwidth)]   # 裁剪坐标为[y0:y1, x0:x1]
+        res = cv2.resize(dst, None, fx=10, fy=10, interpolation=cv2.INTER_CUBIC)
+        # np.save('cut.npy', dst)
+        # cv2.imshow('2', dst)
+        # cv2.waitKey(1000)
+        # cv2.imwrite('/home/ye/img/test/cut.png', dst*255)
+        
+
+        s = dst.shape[0]
+
+        xyzs = np.zeros((s*s, 3))
+
+        xyzs[:, 0] = dst[:, :, 0].flatten()*1000
+        xyzs[:, 1] = dst[:, :, 1].flatten()*1000
+        xyzs[:, 2] = dst[:, :, 2].flatten()*1000
+
+        # test data
+        xyz = []
+
+        for i in range(s*s):  # 筛除外点
+            if xyzs[i, 2] <= 830:
+                if xyzs[i, 2] >= 600:
+                    xyz.append(xyzs[i])
+        xyzm = np.array(xyz)
+
+        x2 = xyzm[:, 0]
+        y2 = xyzm[:, 1]
+        z2 = xyzm[:, 2]
+
+        # 创建系数矩阵A
+        A = np.zeros((3, 3))
+        for i in range(0, xyzm.shape[0]):
+            A[0, 0] = A[0, 0]+x2[i]**2
+            A[0, 1] = A[0, 1]+x2[i]*y2[i]
+            A[0, 2] = A[0, 2]+x2[i]
+            A[1, 0] = A[0, 1]
+            A[1, 1] = A[1, 1]+y2[i]**2
+            A[1, 2] = A[1, 2]+y2[i]
+            A[2, 0] = A[0, 2]
+            A[2, 1] = A[1, 2]
+            A[2, 2] = xyzm.shape[0]
+        # print(A)
+
+        # 创建b
+        b = np.zeros((3, 1))
+        for i in range(0, xyzm.shape[0]):
+            b[0, 0] = b[0, 0]+x2[i]*z2[i]
+            b[1, 0] = b[1, 0]+y2[i]*z2[i]
+            b[2, 0] = b[2, 0]+z2[i]
+        # print(b)
+
+        # 求解X
+        A_inv = np.linalg.inv(A)
+        X = np.dot(A_inv, b)
+        print('平面拟合结果为：z = %.3f * x + %.3f * y + %.3f' % (X[0, 0], X[1, 0], X[2, 0]))
+
+        #计算方差
+        R = 0
+        for i in range(0, xyzm.shape[0]):
+            R = R+(X[0, 0] * x2[i] + X[1, 0] * y2[i] + X[2, 0] - z2[i])**2
+        print('方差为：%.*f' % (3, R))
+
+        # 展示图像
+        fig1 = plt.figure()
+        ax1 = fig1.add_subplot(111, projection='3d')
+        ax1.set_xlabel("x")
+        ax1.set_ylabel("y")
+        ax1.set_zlabel("z")
+        ax1.scatter(x2, y2, z2, c='r', marker='o')
+        x_p = np.linspace(40, 120, 100)
+        y_p = np.linspace(0, 80, 100)
+        x_p, y_p = np.meshgrid(x_p, y_p)
+        z_p = X[0, 0] * x_p + X[1, 0] * y_p + X[2, 0]
+        ax1.plot_wireframe(x_p, y_p, z_p, rstride=10, cstride=10)
+
+        px = x2[900]
+        py = y2[900]
+        pz = X[0, 0] * px + X[1, 0] * py + X[2, 0]
+        fz = np.linspace(740, 880, 100)
+        fx = (X[0, 0]/(-1))*(fz-pz)+px
+        fy = (X[1, 0]/(-1))*(fz-pz)+py
+        # 得到法向量
+        n = (X[0, 0], X[1, 0], -1)
+        print('Vector = ', n)
+        # 法向量旋转回原坐标
+        m = (n[0]*math.cos(action.grasp.angle)+n[1]*math.sin(action.grasp.angle),
+             -n[0]*math.sin(action.grasp.angle)+n[1]*math.cos(action.grasp.angle), -1)
+        print('Vector = ', m)
+        angleY = math.atan2(m[0], -1) * 180/math.pi
+        if angleY < 0:
+            angleY = -180-angleY
+        else:
+            angleY = -angleY+180
+        
+        
+        angleX = math.atan2(m[1], -1) * 180/math.pi
+        if angleX < 0:
+            angleX = 180+angleX
+        else:
+            angleX = angleX-180
+        logger.info("Angle-α: %.3f" % angleX)
+        logger.info("Angle-β: %.3f" % angleY)
+        logger.info("Angle-θ: %.3f" %
+                    (action.grasp.angle / (3.14159 * 2) * 360))
+        plt.plot(fx, fy, fz, 'y', linewidth=5)
+
         vis.show()
