@@ -38,6 +38,7 @@ import time
 
 import numpy as np
 import cv2
+import math
 
 from autolab_core import YamlConfig, Logger
 from perception import (BinaryImage, CameraIntrinsics, ColorImage, DepthImage,
@@ -51,10 +52,10 @@ from gqcnn.grasping import (RobustGraspingPolicy,
 from gqcnn.utils import GripperMode
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import math
 
 # Set up logger.
 logger = Logger.get_logger("examples/policy.py")
+
 
 if __name__ == "__main__":
     # Parse args.
@@ -271,6 +272,7 @@ if __name__ == "__main__":
         vis.title("Planned grasp at depth {0:.3f}m with Q={1:.3f}".format(
             action.grasp.depth, action.q_value))
         vis.grasp(action.grasp, scale=2.5, show_center=True, show_axis=True)
+        plt.savefig("/home/ye/img/grasp/grasp.png")
         logger.info("Center Point: (%d, %d)" %
                     (action.grasp.center.data[0], action.grasp.center.data[1]))
         
@@ -282,7 +284,7 @@ if __name__ == "__main__":
         scale = 1                  # 等比例旋转，即旋转后尺度不变
         img = np.load('/home/ye/img/depth/depth-A.npy')
         logger.info("Center: (%.2f, %.2f, %.2f)" %
-                    (img[center[0], center[1], 0]*1000, img[center[0], center[1], 1]*1000, img[center[0], center[1], 2]*1000))
+                    (img[center[1], center[0], 0]*1000, img[center[1], center[0], 1]*1000, img[center[1], center[0], 2]*1000))
         M = cv2.getRotationMatrix2D(center, angle, scale)
         image_rotation = cv2.warpAffine(src=img, M=M, dsize=(
             640, 480))
@@ -312,7 +314,7 @@ if __name__ == "__main__":
 
         for i in range(s*s):  # 筛除外点
             if xyzs[i, 2] <= 830:
-                if xyzs[i, 2] >= 600:
+                if xyzs[i, 2] >= 730:
                     xyz.append(xyzs[i])
         xyzm = np.array(xyz)
 
@@ -355,46 +357,112 @@ if __name__ == "__main__":
 
         # 展示图像
         fig1 = plt.figure()
+        
         ax1 = fig1.add_subplot(111, projection='3d')
+        ax1.set_aspect('auto')
         ax1.set_xlabel("x")
         ax1.set_ylabel("y")
         ax1.set_zlabel("z")
-        ax1.scatter(x2, y2, z2, c='r', marker='o')
-        x_p = np.linspace(40, 120, 100)
-        y_p = np.linspace(0, 80, 100)
+        ax1.scatter(x2, y2, z2, c='b', marker='.')
+        x_p = np.linspace(50, 150, 100)
+        y_p = np.linspace(0, 100, 100)
         x_p, y_p = np.meshgrid(x_p, y_p)
         z_p = X[0, 0] * x_p + X[1, 0] * y_p + X[2, 0]
-        ax1.plot_wireframe(x_p, y_p, z_p, rstride=10, cstride=10)
+        
+        ax1.plot_wireframe(x_p, y_p, z_p, color='green', rstride=10, cstride=10)
 
-        px = x2[900]
-        py = y2[900]
+        px = x_p[50, 50]
+        py = y_p[50, 50]
         pz = X[0, 0] * px + X[1, 0] * py + X[2, 0]
-        fz = np.linspace(740, 880, 100)
+        fz = np.linspace(750, 850, 100)
         fx = (X[0, 0]/(-1))*(fz-pz)+px
         fy = (X[1, 0]/(-1))*(fz-pz)+py
         # 得到法向量
         n = (X[0, 0], X[1, 0], -1)
         print('Vector = ', n)
         # 法向量旋转回原坐标
-        m = (n[0]*math.cos(action.grasp.angle)+n[1]*math.sin(action.grasp.angle),
-             -n[0]*math.sin(action.grasp.angle)+n[1]*math.cos(action.grasp.angle), -1)
-        print('Vector = ', m)
-        angleY = math.atan2(m[0], -1) * 180/math.pi
+        # m = (n[0]*math.cos(action.grasp.angle)+n[1]*math.sin(action.grasp.angle),
+        #      -n[0]*math.sin(action.grasp.angle)+n[1]*math.cos(action.grasp.angle), -1)
+        # print('Vector = ', m)
+        angleY = math.atan2(n[0], -1) * 180/math.pi
         if angleY < 0:
-            angleY = -180-angleY
+            angleY = 180+angleY
         else:
-            angleY = -angleY+180
-        
-        
-        angleX = math.atan2(m[1], -1) * 180/math.pi
+            angleY = angleY-180
+   
+        angleX = math.atan2(n[1], -1) * 180/math.pi
         if angleX < 0:
-            angleX = 180+angleX
+            angleX = -180-angleX
         else:
-            angleX = angleX-180
+            angleX = -angleX+180
         logger.info("Angle-α: %.3f" % angleX)
         logger.info("Angle-β: %.3f" % angleY)
         logger.info("Angle-θ: %.3f" %
                     (action.grasp.angle / (3.14159 * 2) * 360))
-        plt.plot(fx, fy, fz, 'y', linewidth=5)
+        
+        plt.plot(fx, fy, fz, 'r', linewidth=4)
 
+        # 计算机器人坐标位姿
+        angle_a = angleX / 180 * math.pi
+        angle_b = (angleY - 180) / 180 * math.pi
+        angle_θ = action.grasp.angle
+        # RPY角度变换
+        pitch = angle_b
+        yaw = angle_a
+        roll = angle_θ
+        # 转换成四元数
+        x = math.sin(pitch/2)*math.cos(yaw/2)*math.cos(roll/2) - \
+            math.cos(pitch/2)*math.sin(yaw/2)*math.sin(roll/2)
+        y = math.cos(pitch/2)*math.sin(yaw/2)*math.cos(roll/2) + \
+            math.sin(pitch/2)*math.cos(yaw/2)*math.sin(roll/2)
+        z = math.cos(pitch/2)*math.cos(yaw/2)*math.sin(roll/2) - \
+            math.sin(pitch/2)*math.sin(yaw/2)*math.cos(roll/2)
+        w = math.cos(pitch/2)*math.cos(yaw/2)*math.cos(roll/2) + \
+            math.sin(pitch/2)*math.sin(yaw/2)*math.sin(roll/2)
+        
+        # 计算三手指造成的高度差
+        angle_f = math.atan(math.sqrt(X[0, 0]*X[0, 0]+X[1, 0]*X[1, 0]))
+        l_f = 0.204 * math.cos(angle_f)
+        
+        # 计算抬高位置
+        x_tool = (l_f + 0.2) * X[0, 0] + img[center[1], center[0], 0]
+        y_tool = (l_f + 0.2) * X[1, 0] + img[center[1], center[0], 1]
+        z_tool = img[center[1], center[0], 2] - (l_f + 0.2)
+
+        # 定义位姿
+        waypoint = []
+        pose = [0, 0, 0, 0, 0, 0, 0]
+        pose[0] = y_tool
+        pose[1] = x_tool + 0.5
+        pose[2] = 0.83 - z_tool
+        pose[3] = x
+        pose[4] = y
+        pose[5] = z
+        pose[6] = w
+        waypoint.append(pose)
+        logger.info("Pose: (%.4f, %.4f, %.4f)" % (pose[0], pose[1], pose[2]))
+        logger.info("Orient: (%.4f, %.4f, %.4f, %.4f)" %
+                    (pose[3], pose[4], pose[5], pose[6]))
+
+        # 计算ur5末端位姿
+        x_tool = l_f * X[0, 0] + img[center[1], center[0], 0]
+        y_tool = l_f * X[1, 0] + img[center[1], center[0], 1]
+        z_tool = img[center[1], center[0], 2] - l_f
+
+        # 定义位姿
+        
+        pose = [0, 0, 0, 0, 0, 0, 0]
+        pose[0] = y_tool
+        pose[1] = x_tool + 0.5
+        pose[2] = 0.83 - z_tool
+        pose[3] = x
+        pose[4] = y
+        pose[5] = z
+        pose[6] = w
+        waypoint.append(pose)
+        logger.info("Pose: (%.4f, %.4f, %.4f)" % (pose[0], pose[1], pose[2]))
+        logger.info("Orient: (%.4f, %.4f, %.4f, %.4f)" %
+                    (pose[3], pose[4], pose[5], pose[6]))
+
+        np.save('/home/ye/img/pose.npy', waypoint)
         vis.show()
